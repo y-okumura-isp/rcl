@@ -42,7 +42,7 @@ extern "C"
 #include "rcutils/snprintf.h"
 #include "rcutils/strdup.h"
 #include "rmw/error_handling.h"
-#include "rmw/node_security_options.h"
+#include "rmw/security_options.h"
 #include "rmw/rmw.h"
 #include "rmw/validate_namespace.h"
 #include "rmw/validate_node_name.h"
@@ -308,8 +308,8 @@ rcl_node_init(
     goto fail;
   }
 
-  rmw_node_security_options_t node_security_options =
-    rmw_get_zero_initialized_node_security_options();
+  rmw_security_options_t node_security_options =
+    rmw_get_zero_initialized_security_options();
   node_security_options.enforce_security = (0 == strcmp(ros_enforce_security, "Enforce")) ?
     RMW_SECURITY_ENFORCEMENT_ENFORCE : RMW_SECURITY_ENFORCEMENT_PERMISSIVE;
 
