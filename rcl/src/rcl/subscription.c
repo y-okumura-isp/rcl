@@ -321,7 +321,7 @@ rcl_take_serialized_message(
 rcl_ret_t
 rcl_take_loaned_message(
   const rcl_subscription_t * subscription,
-  void ** loaned_message,
+  const void ** loaned_message,
   rmw_message_info_t * message_info,
   rmw_subscription_allocation_t * allocation)
 {
@@ -358,7 +358,7 @@ rcl_take_loaned_message(
 rcl_ret_t
 rcl_return_loaned_message_from_subscription(
   const rcl_subscription_t * subscription,
-  void * loaned_message)
+  const void * loaned_message)
 {
   RCUTILS_LOG_DEBUG_NAMED(ROS_PACKAGE_NAME, "Subscription releasing loaned message");
   if (!rcl_subscription_is_valid(subscription)) {
