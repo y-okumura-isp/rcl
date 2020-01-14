@@ -309,5 +309,5 @@ rcl_add_custom_gtest(test_security_directory
 )
 
 # Install test resources
-install(DIRECTORY ${test_resources_dir_name}
-        DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${test_resources_dir_name}
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
