@@ -17,9 +17,13 @@
 #include <stdbool.h>
 
 #include "rcl/error_handling.h"
+
 #include "rcutils/filesystem.h"
-#include "rcutils/get_env.h"
 #include "rcutils/format_string.h"
+#include "rcutils/get_env.h"
+#include "rcutils/strdup.h"
+
+#include "rmw/security.h"
 #include "rmw/security_options.h"
 
 #ifdef __clang__
@@ -227,20 +231,22 @@ char * rcl_get_secure_root(
   const rcl_allocator_t * allocator)
 {
   bool ros_secure_node_override = true;
+  bool use_node_name_in_lookup = rmw_use_node_name_in_security_directory_lookup();
 
   // find out if either of the configuration environment variables are set
   const char * env_buf = NULL;
   if (NULL == node_name) {
     return NULL;
   }
-  if (rcutils_get_env(ROS_SECURITY_NODE_DIRECTORY_VAR_NAME, &env_buf)) {
-    return NULL;
+  if (use_node_name_in_lookup) {
+    if (rcutils_get_env(ROS_SECURITY_NODE_DIRECTORY_VAR_NAME, &env_buf)) {
+      return NULL;
+    }
+    if (!env_buf) {
+      return NULL;
+    }
   }
-  if (!env_buf) {
-    return NULL;
-  }
-  size_t ros_secure_root_size = strlen(env_buf);
-  if (!ros_secure_root_size) {
+  if (!use_node_name_in_lookup || 0 == strcmp("", env_buf)) {
     // check root directory if node directory environment variable is empty
     if (rcutils_get_env(ROS_SECURITY_ROOT_DIRECTORY_VAR_NAME, &env_buf)) {
       return NULL;
@@ -248,8 +254,7 @@ char * rcl_get_secure_root(
     if (!env_buf) {
       return NULL;
     }
-    ros_secure_root_size = strlen(env_buf);
-    if (!ros_secure_root_size) {
+    if (0 == strcmp("", env_buf)) {
       return NULL;  // environment variable was empty
     } else {
       ros_secure_node_override = false;
@@ -257,20 +262,13 @@ char * rcl_get_secure_root(
   }
 
   // found a usable environment variable, copy into our memory before overwriting with next lookup
-  char * ros_secure_root_env =
-    (char *)allocator->allocate(ros_secure_root_size + 1, allocator->state);
-  memcpy(ros_secure_root_env, env_buf, ros_secure_root_size + 1);
-  // TODO(ros2team): This make an assumption on the value and length of the root namespace.
-  // This should likely come from another (rcl/rmw?) function for reuse.
-  // If the namespace is the root namespace ("/"), the secure root is just the node name.
+  char * ros_secure_root_env = rcutils_strdup(env_buf, *allocator);
 
   char * lookup_strategy = NULL;
   char * node_secure_root = NULL;
   if (ros_secure_node_override) {
-    node_secure_root = (char *)allocator->allocate(ros_secure_root_size + 1, allocator->state);
-    memcpy(node_secure_root, ros_secure_root_env, ros_secure_root_size + 1);
+    node_secure_root = rcutils_strdup(ros_secure_root_env, *allocator);
     lookup_strategy = g_security_lookup_type_strings[ROS_SECURITY_LOOKUP_NODE_OVERRIDE];
-
   } else {
     // Check which lookup method to use and invoke the relevant function.
     const char * ros_security_lookup_type = NULL;

@@ -32,6 +32,7 @@ extern "C"
 #include "rcutils/logging_macros.h"
 #include "rcutils/stdatomic_helper.h"
 #include "rmw/error_handling.h"
+#include "rmw/security.h"
 #include "tracetools/tracetools.h"
 
 static atomic_uint_least64_t __rcl_next_unique_id = ATOMIC_VAR_INIT(1);
@@ -162,25 +163,44 @@ rcl_init(
   }
 
   // TODO(ivanpauno): Uncomment this when new path discovery magic is ready.
-  // bool use_security = false;
-  // ret = rcl_use_security(&use_security);
-  // if (RCL_RET_OK != ret) {
-  //   fail_ret = ret;
-  //   goto fail;
-  // }
-  // RCUTILS_LOG_DEBUG_NAMED(
-  //   ROS_PACKAGE_NAME, "Using security: %s", use_security ? "true" : "false");
+  bool use_security = false;
+  ret = rcl_use_security(&use_security);
+  if (RCL_RET_OK != ret) {
+    fail_ret = ret;
+    goto fail;
+  }
+  RCUTILS_LOG_DEBUG_NAMED(
+    ROS_PACKAGE_NAME, "Using security: %s", use_security ? "true" : "false");
 
-  // ret = rcl_get_enforcement_policy(
-  //   &context->impl->init_options.impl->rmw_init_options.security_options.enforce_security);
-  // if (RCL_RET_OK != ret) {
-  //   fail_ret = ret;
-  //   goto fail;
-  // }
+  if (!rmw_use_node_name_in_security_directory_lookup()) {
+    rmw_security_options_t * security_options =
+      &context->impl->init_options.impl->rmw_init_options.security_options;
 
-  // if (use_security) {
-  //   ...
-  // }
+    ret = rcl_get_enforcement_policy(&security_options->enforce_security);
+    if (RCL_RET_OK != ret) {
+      fail_ret = ret;
+      goto fail;
+    }
+
+    if (!use_security) {
+      security_options->enforce_security = RMW_SECURITY_ENFORCEMENT_PERMISSIVE;
+    } else {  // if use_security
+      // File discovery magic here
+      char * secure_root = rcl_get_secure_root(
+        options->impl->rmw_init_options.name,
+        options->impl->rmw_init_options.namespace_,
+        &options->impl->allocator);
+      if (secure_root) {
+        RCUTILS_LOG_INFO_NAMED(ROS_PACKAGE_NAME, "Found security directory: %s", secure_root);
+        security_options->security_root_path = secure_root;
+      } else {
+        if (RMW_SECURITY_ENFORCEMENT_ENFORCE == security_options->enforce_security) {
+          ret = RCL_RET_ERROR;
+          goto fail;
+        }
+      }
+    }
+  }
 
   // Initialize rmw_init.
   rmw_ret_t rmw_ret = rmw_init(

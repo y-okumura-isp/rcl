@@ -34,22 +34,22 @@
  *   which is currently a path to a directory on the filesystem containing DDS Security permission files.
  */
 typedef char * (* security_lookup_fn_t) (
-  const char * node_name,
-  const char * node_namespace,
+  const char * name,
+  const char * namespace_,
   const char * ros_secure_root_env,
   const rcl_allocator_t * allocator
 );
 
 char * exact_match_lookup(
-  const char * node_name,
-  const char * node_namespace,
+  const char * name,
+  const char * namespace_,
   const char * ros_secure_root_env,
   const rcl_allocator_t * allocator
 );
 
 char * prefix_match_lookup(
-  const char * node_name,
-  const char * node_namespace,
+  const char * name,
+  const char * namespace_,
   const char * ros_secure_root_env,
   const rcl_allocator_t * allocator
 );
@@ -73,25 +73,25 @@ char * g_security_lookup_type_strings[] = {
   "MATCH_PREFIX"
 };
 
-/// Return the directory whose name most closely matches node_name (longest-prefix match),
+/// Return the directory whose name most closely matches name (longest-prefix match),
 /// scanning under base_dir.
 /**
  * By using a prefix match, a node named e.g. "my_node_123" will be able to load and use the
  * directory "my_node" if no better match exists.
  * \param[in] base_dir
- * \param[in] node_name
+ * \param[in] name
  * \param[out] matched_name must be a valid memory address allocated with at least
  * _TINYDIR_FILENAME_MAX characters.
  * \return true if a match was found
  */
 static bool get_best_matching_directory(
   const char * base_dir,
-  const char * node_name,
+  const char * name,
   char * matched_name)
 {
   size_t max_match_length = 0;
   tinydir_dir dir;
-  if (NULL == base_dir || NULL == node_name || NULL == matched_name) {
+  if (NULL == base_dir || NULL == name || NULL == matched_name) {
     return false;
   }
   if (-1 == tinydir_open(&dir, base_dir)) {
@@ -105,7 +105,7 @@ static bool get_best_matching_directory(
     if (file.is_dir) {
       size_t matched_name_length = strnlen(file.name, sizeof(file.name) - 1);
       if (0 ==
-        strncmp(file.name, node_name,
+        strncmp(file.name, name,
         matched_name_length) && matched_name_length > max_match_length)
       {
         max_match_length = matched_name_length;
@@ -122,22 +122,22 @@ cleanup:
 }
 
 char * exact_match_lookup(
-  const char * node_name,
-  const char * node_namespace,
+  const char * name,
+  const char * namespace_,
   const char * ros_secure_root_env,
   const rcl_allocator_t * allocator)
 {
   // Perform an exact match for the node's name in directory <root dir>/<namespace>.
   char * node_secure_root = NULL;
   // "/" case when root namespace is explicitly passed in
-  if (1 == strlen(node_namespace)) {
-    node_secure_root = rcutils_join_path(ros_secure_root_env, node_name, *allocator);
+  if (1 == strlen(namespace_)) {
+    node_secure_root = rcutils_join_path(ros_secure_root_env, name, *allocator);
   } else {
     char * node_fqn = NULL;
     char * node_root_path = NULL;
     // Combine node namespace with node name
     // TODO(ros2team): remove the hard-coded value of the root namespace
-    node_fqn = rcutils_format_string(*allocator, "%s%s%s", node_namespace, "/", node_name);
+    node_fqn = rcutils_format_string(*allocator, "%s%s%s", namespace_, "/", name);
     // Get native path, ignore the leading forward slash
     // TODO(ros2team): remove the hard-coded length, use the length of the root namespace instead
     node_root_path = rcutils_to_native_path(node_fqn + 1, *allocator);
@@ -149,8 +149,8 @@ char * exact_match_lookup(
 }
 
 char * prefix_match_lookup(
-  const char * node_name,
-  const char * node_namespace,
+  const char * name,
+  const char * namespace_,
   const char * ros_secure_root_env,
   const rcl_allocator_t * allocator)
 {
@@ -158,13 +158,13 @@ char * prefix_match_lookup(
   char * node_secure_root = NULL;
   char matched_dir[_TINYDIR_FILENAME_MAX] = {0};
   char * base_lookup_dir = NULL;
-  if (strlen(node_namespace) == 1) {
+  if (strlen(namespace_) == 1) {
     base_lookup_dir = (char *) ros_secure_root_env;
   } else {
     // TODO(ros2team): remove the hard-coded length, use the length of the root namespace instead.
-    base_lookup_dir = rcutils_join_path(ros_secure_root_env, node_namespace + 1, *allocator);
+    base_lookup_dir = rcutils_join_path(ros_secure_root_env, namespace_ + 1, *allocator);
   }
-  if (get_best_matching_directory(base_lookup_dir, node_name, matched_dir)) {
+  if (get_best_matching_directory(base_lookup_dir, name, matched_dir)) {
     node_secure_root = rcutils_join_path(base_lookup_dir, matched_dir, *allocator);
   }
   if (base_lookup_dir != ros_secure_root_env && NULL != base_lookup_dir) {
@@ -174,15 +174,15 @@ char * prefix_match_lookup(
 }
 
 char * rcl_get_secure_root(
-  const char * node_name,
-  const char * node_namespace,
+  const char * name,
+  const char * namespace_,
   const rcl_allocator_t * allocator)
 {
   bool ros_secure_node_override = true;
 
   // find out if either of the configuration environment variables are set
   const char * env_buf = NULL;
-  if (NULL == node_name) {
+  if (NULL == name) {
     return NULL;
   }
   if (rcutils_get_env(ROS_SECURITY_NODE_DIRECTORY_VAR_NAME, &env_buf)) {
@@ -234,11 +234,11 @@ char * rcl_get_secure_root(
       g_security_lookup_type_strings[ROS_SECURITY_LOOKUP_MATCH_PREFIX]))
     {
       node_secure_root = g_security_lookup_fns[ROS_SECURITY_LOOKUP_MATCH_PREFIX]
-          (node_name, node_namespace, ros_secure_root_env, allocator);
+          (name, namespace_, ros_secure_root_env, allocator);
       lookup_strategy = g_security_lookup_type_strings[ROS_SECURITY_LOOKUP_MATCH_PREFIX];
     } else { /* Default is MATCH_EXACT */
       node_secure_root = g_security_lookup_fns[ROS_SECURITY_LOOKUP_MATCH_EXACT]
-          (node_name, node_namespace, ros_secure_root_env, allocator);
+          (name, namespace_, ros_secure_root_env, allocator);
       lookup_strategy = g_security_lookup_type_strings[ROS_SECURITY_LOOKUP_MATCH_EXACT];
     }
   }
@@ -249,7 +249,7 @@ char * rcl_get_secure_root(
       RCL_SET_ERROR_MSG_WITH_FORMAT_STRING(
         "SECURITY ERROR: unable to find a folder matching the node name '%s' in '%s%s'. "
         "Lookup strategy: %s",
-        node_name, ros_secure_root_env, node_namespace, lookup_strategy);
+        name, ros_secure_root_env, namespace_, lookup_strategy);
     } else {
       RCL_SET_ERROR_MSG_WITH_FORMAT_STRING(
         "SECURITY ERROR: directory '%s' does not exist. Lookup strategy: %s",
